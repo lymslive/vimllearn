@@ -4,6 +4,7 @@ tags
 *.o
 *.out
 *.log
+*.cgi
 core.*
 Session.vim
 Sessionx.vim
