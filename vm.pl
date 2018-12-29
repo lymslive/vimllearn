@@ -118,10 +118,55 @@ sub postbody
 	}
 }
 
+# fix links from/to home content and prev/next pages
 sub fixlink
 {
 	my $base = $ENV{SCRIPT_NAME};
-	if ($mdpath =~ /content\.md$/) {
+	my $subname = $query{p};
+	if ($subname =~ /^content$/) {
 		$body =~ s/href="(.+)\.md"/href="$base?p=$1"/g;
 	}
+	else {
+		my ($prev, $next) = findprenext($subname);
+		my @foot = ();
+
+		push(@foot, "<hr/>");
+		$prev ? push(@foot, qq{<a href="$base?p=$prev">Prev</a>})
+			: push(@foot, qq{<a>First</a>});
+		push(@foot, qq{<a href="$base?p=content">| Home |</a>});
+		$next ? push(@foot, qq{<a href="$base?p=$next">Next</a>})
+			: push(@foot, qq{<a>Last</a>});
+
+		$body .= sprintf(qq{\n<div class="foot-link"> %s \n</div>\n}, join("\n", @foot));
+	}
+}
+
+# read content.md, find the prev/next page
+sub findprenext
+{
+	my $curname = shift;
+	my ($prev, $next) = ('', '');
+
+	my $tocname = "$Bin/content.md";
+	return ($prev, $next) unless -f $tocname;
+
+	open(my $fh, '<', $tocname) or die "cannot open $tocname $!";
+	my ($prev_may, $cur_may);
+	while (<$fh>) {
+		chomp;
+		next unless /\((\S+)\.md\)/;
+		$prev_may = $cur_may;
+		$cur_may = $1;
+		if ($cur_may eq $curname) {
+			$prev = $prev_may;
+			next;
+		}
+		if ($prev_may eq $curname) {
+			$next = $cur_may;
+			last;
+		}
+	}
+	close($fh);
+
+	return ($prev, $next);
 }
