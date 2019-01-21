@@ -18,3 +18,15 @@ vim8.1 版本测试，Windows 与低版本虽未全面测试，但相信 vim 本
 用了。
 
 欢迎反馈意见或文字纠错。
+
+本书的 github 地址：
+[https://github.com/lymslive/vimllearn](https://github.com/lymslive/vimllearn)
+。允许按常规开源库一样 fork ，如有兴趣也可提 issue 讨论或 pr 。
+
+阿里云备用网页阅读地址：
+[http://lymslive.top/book/vimllearn/vm.cgi?p=content](http://lymslive.top/book/vimllearn/vm.cgi?p=content)
+。该个人网站的文章目前纯粹只读，不想管理留言与评论。
+
+版权声明：基于 MIT 开源协议。允许自由扩散，以及援用部分段落解说与示例代码。但
+不允许将整书或整章节用于商业出版。笔者本人保留将来联系出版社以传统纸媒出版的权
+利。
