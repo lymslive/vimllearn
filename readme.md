@@ -6,7 +6,7 @@
 全书正文分十章，约摸可再划分为基础篇、中级篇与高级篇三部分，现已完成初稿。后面
 有可以计划再补上番外实战篇，写几章开发具体插件实例的实现思路。
 
-[进入目录](./content.md)
+[目录 content.md](./content.md)
 
 初稿在本地我用自己的笔记插件 [vnote](https://github.com/lymslive/vnote) 写的，
 保存在笔记本 [notebook](https://github.com/lymslive/notebook)。
@@ -24,8 +24,8 @@ vim8.1 版本测试，Windows 与低版本虽未全面测试，但相信 vim 本
 。允许按常规开源库一样 fork ，如有兴趣也可提 issue 讨论或 pr 。
 
 阿里云备用网页阅读地址：
-[http://lymslive.top/book/vimllearn/vm.cgi?p=content](http://lymslive.top/book/vimllearn/vm.cgi?p=content)
-。该个人网站的文章目前纯粹只读，不想管理留言与评论。
+[http://lymslive.top/book/vimllearn/](http://lymslive.top/book/vimllearn/)
+，系用 gitbook 编译的书籍格式。
 
 版权声明：基于 MIT 开源协议。允许自由扩散，以及援用部分段落解说与示例代码。但
 不允许将整书或整章节用于商业出版。笔者本人保留将来联系出版社以传统纸媒出版的权
