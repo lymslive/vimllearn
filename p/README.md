@@ -1,4 +1,4 @@
-# VimLScriptGuid文档说明
+# VimLScriptGuide文档说明
 
 ### VimLScriptGuide是什么？
 VimLScriptGuide.pdf是作者[lymslive](https://github.com/lymslive/vimllearn)写的VimL教程md文件的pdf版本，著作权归原作者所有。
