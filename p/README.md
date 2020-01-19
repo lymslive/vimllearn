@@ -19,6 +19,6 @@ VimLScriptGuide.pdf是作者[lymslive](https://github.com/lymslive/vimllearn)写
 - pandoc [文档转换神器](https://github.com/jgm/pandoc)
 - texlive 可参考这篇文章[安装](https://blog.csdn.net/Shieber/article/details/93716448)
 
-###其他：
+### 其他：
 Linux/Mac OS/Windows下还可使用Atom编辑器自带的markdown转pdf插件将合并后的md转换为pdf，
 快捷键是Ctrl+Shift+E。
