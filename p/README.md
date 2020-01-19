@@ -1,7 +1,10 @@
 # VimLScriptGuid文档说明
 
+### VimLScriptGuide是什么？
+VimLScriptGuide.pdf是作者[lymslive](https://github.com/lymslive/vimllearn)写的VimL教程md文件的pdf版本，著作权归原作者所有。
+
 ### 如何将多个md文件合并为pdf
-在Linux下使用pandoc结合texlive将md文件转换为pdf。
+本文件是在Linux下结合pandoc和texlive，由md文件转换得到。
 
 步骤：
 - 利用cat命令将所有md文件追加到一个文件，如VimLScriptGuide.md。  
