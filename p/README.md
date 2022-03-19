@@ -1,7 +1,7 @@
-# VimLScriptGuide文档说明
+# VimLScriptGuide 及 VimLScriptGuideBook 文档说明
 
-### VimLScriptGuide是什么？
-VimLScriptGuide.pdf是作者[lymslive](https://github.com/lymslive/vimllearn)写的VimL教程md文件的pdf版本，著作权归原作者所有。
+### 都是什么？
+VimLScriptGuide.pdf是作者[lymslive](https://github.com/lymslive/vimllearn)写的VimL教程md文件的pdf版本，著作权归原作者所有。VimLScriptGuideBook.pdf则是书籍版本，比直接用md文件合成的 VimLScriptGuide.pdf更精美。
 
 ### 如何将多个md文件合并为pdf
 本文件是在Linux下结合pandoc和texlive，由md文件转换得到。
@@ -15,9 +15,20 @@ VimLScriptGuide.pdf是作者[lymslive](https://github.com/lymslive/vimllearn)写
 - 时间：15s左右。
 - 系统：Ubuntu 18.04 LTS 
 
-### 依赖：
+依赖：
 - pandoc [文档转换神器](https://github.com/jgm/pandoc)
 - texlive 可参考这篇文章[安装](https://blog.csdn.net/Shieber/article/details/93716448)
+
+### 如何制作书籍版pdf
+将md文件内容转写为tex，设置好封面、字体、格式等，最后利用texlive就可直接编译成书籍。
+
+- 时间：30s左右。
+- 系统：Ubuntu 18.04 LTS 
+
+依赖：
+- texlive 
+
+
 
 ### 其他：
 Linux/Mac OS/Windows下还可使用Atom编辑器自带的markdown转pdf插件将合并后的md转换为pdf，
