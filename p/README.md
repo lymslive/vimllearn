@@ -1,4 +1,4 @@
-# vim-script-guide-book 文档说明
+# vim-script-guide-book 文档说明 [[繁](./README_TW.md)]
 
 ### 是什么？
 vim-script-guide-book.pdf是作者[lymslive](https://github.com/lymslive/vimllearn)写的VimL教程md文件的pdf版本（包括简体及繁体版），著作权归原作者所有。
