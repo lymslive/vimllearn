@@ -102,7 +102,7 @@ vim 有时会有点麻烦，可能还涉及你的 `vimrc` 配置。因此还是�
 
 在函数定义时可以在参数表中加入若干参数，然后在调用时也须使用相同数量的参数：
 
-```vmi
+```vim
 : function! Sum(x, y)
 :     return a:x + a:y
 : endfunction
@@ -127,7 +127,7 @@ vim 有时会有点麻烦，可能还涉及你的 `vimrc` 配置。因此还是�
 ，使形参始终保存着当前调用时实参的值，那是更加安全的做法。
 
 为了更好地理解参数作用域，改写上面的代码如下：
-```vmi
+```vim
 : function! Sum(x, y)
 :     let x = 'not used x'
 :     let y = 'not used y'

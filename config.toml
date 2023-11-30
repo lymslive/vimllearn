@@ -8,7 +8,8 @@ compile_sass = true
 build_search_index = true
 
 # github page can select /docs but not /public
-output_dir = "docs"
+# output_dir = "docs"
+output_dir = "public"
 
 # https://www.getzola.org/themes/book/
 theme = "book"
