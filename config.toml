@@ -1,5 +1,5 @@
 # The URL the site will be built for
-base_url = "https://example.com"
+base_url = "https://lymslive.github.io/vimllearn"
 
 # Whether to automatically compile all Sass files in the sass directory
 compile_sass = true
@@ -7,6 +7,10 @@ compile_sass = true
 # Whether to build a search index to be used later on by a JavaScript library
 build_search_index = true
 
+# github page can select /docs but not /public
+output_dir = "docs"
+
+# https://www.getzola.org/themes/book/
 theme = "book"
 
 [markdown]
