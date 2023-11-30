@@ -1,0 +1,3 @@
+[submodule "book"]
+	path = themes/book
+	url = git@github.com:getzola/book.git

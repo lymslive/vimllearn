@@ -1,0 +1,190 @@
++++
+title = "8.2 使用异步任务"
+weight = 2
++++
+
+<!-- ## 8.2 使用异步任务 -->
+
+注意：本节所介绍的功能要求 vim 编译包括 `+job` 特性。
+
+### 8.2.1 简单任务体验
+
+前文说到，Vim 的异步任务主要是针对外部命令的。那我们就先以最简单最常见的系统命
+令 `ls` 为例，其功能是列出当前目录下的文件，若在 Windows 操作系统下或可用 `dir` 
+命令代替。
+
+首先请在 shell 中进入一个非空目录，便于实践，并在 shell 中执行如下命令：
+```bash
+$ ls
+```
+
+然后启动 vim 中，在 vim 命令行中执行如下命令：
+```vim
+:!ls
+```
+
+体验一下 vim 直接执行外部命令的现象。与在 shell 中执行几乎是一样的，只是将输出
+打印到终端，供用户交互时查看。然而在用脚本编程中，我们一般希望将外部命令的输出
+保存到某个变量，便于后续控制与利用。如此可用 `system()` 函数：
+
+```vim
+: let g:dir_list = system('ls')
+: echo g:dir_list
+```
+
+当然一般而言，`ls` 命令执行得足够快，在 VimL 脚本中能很快捕获到其输出。不过我
+们暂时忽略外部命令的速率，再来看来如何用异步任务完成类似的任务。
+
+```vim
+function! OnWorking(job, msg)
+    echomsg 'well work doing:' . a:msg
+    let g:dir_list .= a:msg . "\n"
+endfunction
+
+function! DoneWork(job)
+    echomsg 'well work done:'
+    echomsg g:dir_list
+endfunction
+
+function! StartWork()
+    let g:dir_list = ''
+    let l:option = {'callback': 'OnWorking', 'close_cb': 'DoneWork'}
+    let g:job_ls = job_start('ls', l:option)
+endfunction
+```
+
+在这个示例中，函数中直接使用全局 `g:` 变量，并非良好编程规范，这里仅作说明目的
+，便于在命令中测试观察。 在命令中输入 `:call StarWork()` 运行示例。
+
+内置函数 `job_start()` 用于开启一个异步命令。其第一参数就如同 `system()` 函数
+的参数，指定要运行的外部系统命令。第二个可选参数是个有诸多键的字典，用于配置或
+控制该任务的行为。其中最重要的参数就是设置回调函数，在该示例中指定了两个回调函
+数。一个是 `OnWrking()` 在工作进行时调用，每当所执行的任务有输出时就会被调用，
+输出会通过第二参数传入回调函数；另一个是 `DoneWork()` ，在工作完成时调用。当然
+应该知道，这两个函数名是我们任意自定义的，名字不重要，关键的魔法是键名，
+`callback` 与 `close_cb` 标识了对应的函数（引用）在适当的机会被调用。
+
+这两个回调函数为求简单，忽略了第一个作为任务标识的参数，并且仍利用全局变量
+`g:dir_list` ，在工作进行时将外部输出收集（串接）起来，最后在工作完成时一次性
+地将其完整地用 VimL 打印出来，或为其他更有价值的利用。这里用 `echomsg` 而不是
+`echo` 命令是为了能在随后（通过 `:message` ）查看消息历史记录。不过要注意，虽
+然 `g:dir_list` 在串接时添加了回车符变成多行文本，但 `echomsg` 仍将其当作一行
+输出，于是回车符会被其他可打印符号（`^@`）代替。可手动执行 `:echo g:dir_list`
+再确认它是多行文本，或用 `split()` 函数将其分隔到列表中。
+
+另一点要注意的是，并非每次 `job_start()` 启动任务都得注册这两个回调，根据实际
+工作任务情况可在其中一个（或更多）回调函数中处理感兴趣的信息。甚至如果只是想让
+某个外部命令在后台默默运行，不关心任何反馈的话，也可以不注册任何回调函数。譬如
+在后台用 `ctags` 更新索引文件。只不过提供回调的话，会使异步任务更有交互感与确
+认感，让用户知道后台命令确实在执行了。
+
+### 8.2.2 job 选项及其他相关函数
+
+`job_start()` 的第二参数支持相当多的选项，详情请见 `:help job-options` ，这里
+择其要点解释相关概念。帮助主题中所列的选项，不仅给这个 `job_start()` 函数使用，
+也供更通用的底层“通道” `ch_open()` 利用，后者在下一节继续介绍。现在只需理解，
+任务（`job`）是通道（`channel`）的一种特例或具体应用。
+
+任务采用管道（`pipe`）将外部命令与 vim 联接起来，那就涉及标准输入、标准输出与
+标准错误输出这三套件，在其间的消息传递都采用所谓 `NL` 模式，可以理解为输入输出
+都按回车分行的字符串。如果某个输出/输入端是有格式的消息字符串（如 json），则可
+通过 `in_mode` `out_mode` `err_mode` 分别设定。不过在大多数情况下，使用默认的
+`NL` 模式就适合，且理解更为自然，当然这实际上取决于所调用的外部命令的需求。
+
+本节开始的示例所谓 `callback` 回调，其实能同时捕获标准输出与标准错误输出，也就
+是假设外部命令直接在 `shell` 中执行会打印到屏幕终端的所有可见信息。如果想更精
+细地区分两者，那就使用 `out_cb` 与 `err_cb` 这两种回调，各司其职。
+
+与 `close_cb` 类似的回调，还有个 `exit_cb` 回调。从字面上理解，前者是任务关闭
+时调用，后者是退出时被调用。`exit_cb` 回调函数比 `close_cb` 可多接收一个参数，
+表示任务的状态。
+
+任务管道使用输入输出还可以重定向到文件，或在 vim 中打开的一个 buffer，使用
+`in_io` `out_io` `err_io` 及相关的选项设置。如果捕获输出不是最终目的，就可避免
+在回调函数中将输出保存至 VimL 变量中，直接设置 `out_io` 输出至 buffer 中呈现更
+为直观。
+
+例如，有这么一个命令 `tail -f` 可用于监控持续增长的日志文件。如果要从 vim 调用
+它，在支持异步特性之前，若用 `system()` 函数，它永远不会返回，那便无用。然而用
+`job_start()` 启动它，再将 `out_io` 设置为一个 buffer ，就可以达到目的，直接在
+vim 中查看增长中的日志。
+
+当然了，还是使用回调函数的工作流更常见，毕竟编程控制上更灵活。如果最终仍想在某
+个 vim buffer 中展示输出，quickfix 或 localist 或许也是个更好的选择。譬如异步
+执行 `grep` （或其他更佳的搜索工具），将结果放在 quickfix 中也适于跳转。
+
+`job_start()` 也是有返回值的，返回一个标记，代表这个启动的任务，能传递给其他几
+个任务相关的函数，以指明操作哪个任务。`job_stop()` 停止指定任务，如果启动的外
+部命令是设计为死循环永不终止的，也许在 VimL 中就有必要用该函数显式终止任务了。
+`job_status()` 用于查询一个任务的状态：fail 表示任务根本就没成功启动；run 表示
+任务正常进行中；dead 表示任务跑完了。`job_info()` 则可查询有关任务更详细的信息
+。
+
+一般来说，任务的选项是要在启动时设置，但也有些选项可以在启动之后，还处于 run
+状态时，使用 `job_setoptions()` 补充选项。这运用场景就有些受限了。最后，还有个
+函数 `job_getchannel()` 用于获得任务底层的通道。
+
+### 8.2.3 通用异步插件 asyncrun
+
+`job` 选项与细节繁多，除了帮助文档，另一个绝好的学习方式是参考优秀插件的实现与运
+用。这里隆重推荐 [asyncrun.vim](https://github.com/skywind3000/asyncrun.vim) ，
+出自国人网名“韦一笑”大神。如果只是使用，它已经封装得很好了，直接使用 `AsyncRun` 
+命令即可。如果是想学习异步编程，则该插件也足够轻量，只有一个单文件，也非常适合
+参考学习。
+
+比如，浏览大概后直接搜索 `job_start` 看它是如何启动异步任务的，摘录关键代码如
+下：
+
+```vim
+let l:options = {}
+let l:options['callback'] = function('s:AsyncRun_Job_OnCallback')
+let l:options['close_cb'] = function('s:AsyncRun_Job_OnClose')
+let l:options['exit_cb'] = function('s:AsyncRun_Job_OnExit')
+let l:options['out_io'] = 'pipe'
+let l:options['err_io'] = 'out'
+let l:options['in_io'] = 'null'
+let l:options['out_mode'] = 'nl'
+let l:options['err_mode'] = 'nl'
+let l:options['stoponexit'] = 'term'
+if g:asyncrun_stop != ''
+    let l:options['stoponexit'] = g:asyncrun_stop
+endif
+if s:async_info.range > 0
+    let l:options['in_io'] = 'buffer'
+    let l:options['in_mode'] = 'nl'
+    let l:options['in_buf'] = s:async_info.range_buf
+    let l:options['in_top'] = s:async_info.range_top
+    let l:options['in_bot'] = s:async_info.range_bot
+endif
+let s:async_job = job_start(l:args, l:options)
+let l:success = (job_status(s:async_job) != 'fail')? 1 : 0
+```
+
+可见，它首先是详细构建选项字典，关键的回调函数显然是引用脚本私有函数的。注意在
+那个条件分支中设定 `in_io` 标准输入选项，那是在指定选区时运行 `:'<,'>AysncRun`
+时传入的，把当前 buffer 选定的行供给任务的标准输入。在 `job_start()` 之后，再
+立即调用 `job_status()` ，可判断任务是否成功启动过。
+
+然后按图索骥，跟踪赋给选项的变量从哪里来，回调函数处理又到哪里去（也正是添加到
+`quickfix` 窗口中）。除此之后，就如常规的 VimL 编程了。
+
+你可以利用该插件体验一下在 vim 中直接执行 `make` 编译或 `grep` 搜索：
+
+```vim
+: AsyncRun make
+: AsyncRun grep ...
+```
+
+对比体验一下在 vim7 之前没有异步支持时只能用类似如下的命令：
+
+```vim
+:! make
+:! grep ...
+```
+
+### 8.2.4 小结
+
+异步任务只是 vim8 开始引入的新机制，为解决某些问题尤其是调用外部耗时命令时提供
+另一种编程模式。要真正利用好异步机制，自然还取决于整体的 VimL 编程技术，比如如
+何有效地管理变量与函数这种基础水平。不过，如果有在其他语言编写过异步回调的经验
+，改用 VimL 编写异步任务也是类似的思想，就更容易上手些。

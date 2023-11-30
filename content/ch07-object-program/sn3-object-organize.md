@@ -1,0 +1,474 @@
++++
+title = "7.3 自定义类的组织管理"
+weight = 3
++++
+
+<!-- ## 7.3 自定义类的组织管理 -->
+
+在上一节已经讲叙了如何利用 VimL 语法实现面向对象编程的基本原理，本节进一步讨论
+在实践中如何更好地使用 VimL 面向对象编程。关键是如何定义类与使用类，如何管理与
+组织类代码使之更整洁。因为从某种意义讲，面向对象并不是什么新的编程技术，而是抽
+象思考问题的哲学，以及代码管理的方法论。
+
+笔者在 github 托管了一个有关 VimL 面向对象编程的项目
+[vimloo](https://github.com/lymslive/vimloo)，可作为一个实现范例。本节就介绍这
+个 vimloo 项目的基本思路，不过该项目代码有可能继续更新维护与优化，故本节教程所
+采用的示例代码为求简单，不尽与实际项目相同。
+
+### 每个类独立于一个自动加载文件
+
+在上一节的示例代码中，我们定义了一个名为 `class` 的类。因为彼时只关注实现原理
+，并未指定相关代码应保存何处。你可以放在任一个脚本中，甚至也可以粘贴入命令行，
+也能起到演示之用。
+
+如果你想用 VimL 实现一个规划不太大的（插件）功能，又想用到字典的对象特征，想在
+单文件中实现全部（或大部分）功能，那么也着实可以就像是上节的示例那样，在单文件
+中定义类然后使用类。但是，既然想到要用面向对象的设计，那么一般地每个类都应该是
+相对独立完整的功能单元。这时，将类的定义代码提取出来放在独立的文件中就更合适了
+，这也可以达到隐藏类实现细节的目的，在其他需要使用对象的地方，只需创建相应类的
+对象，调用该类对象所支持的方法即可。
+
+简言之，要区分类的实现者与使用者（尽管很多时候这是同一个程序员的工作）。在
+VimL 中，如果要将类的定义代码单独存于一个文件中，最适合的地方应该就是
+`autoload/` 子目录下的自动加载文件了。因为它可以让用户从任意地方调用，并且只在
+真正需要用到时才加载类定义代码。
+
+于是，将上节的 `class` 类定义稍作修改，保存于某个 `&rtp` （如 `~/.vim`）的
+`autoload/class.vim` 文件中：
+
+```vim
+" File: ~/.vim/autoload/class.vim
+
+let s:class = {}
+let s:class.name = 'class'
+let s:class.version = 1
+
+function! s:class.string() abort dict
+    return self.name
+endfunction
+
+function! s:class.number() abort dict
+    return self.version
+endfunction
+
+function! s:class.disp() abort dict
+    echo self.string() . ':' . self.number()
+endfunction
+```
+
+主要是将定义的类（字典）名字改为 `s:class`，使之成为局部于脚本的变量。这样在不
+同文件中定义的不同类也都能用相同的字面名字 `s:class` 而互不冲突。该变量名的选
+用是任意的，在不同类文件中选用不同变量名也可以，只要在随后定义类的属性与方法也
+都用相应的字典变量名即可。但这里的建议是，为求风格统一，每个类文件定义的类字典
+变量都取名为 `s:class`。
+
+在这个 `class.vim` 中定义的类没打算做什么实际工作，因此只（貌似随意地）定义了
+两个属性与几个方法。当然，你也可以将 `string()` 与 `number()` 方法想象为类型转
+换方法，用于在必要时如何将一个对象转为字符串或数字的表示法。
+
+### 使用自动加载函数处理类方法
+
+现在 `class.vim` 文件中定义的 `s:class` 类只能在该文件中访问，这显然是不够的。
+为了达到分离类定义与类使用的设计原意，我们还得在 `class.vim` 提供一些公有接口
+让外界使用类。自动加载函数就是一个很好的选择，因为它既是全局函数，又通过 `#`
+前缀限定了“伪作用域”。例如，添加以下函数：
+
+```vim
+" File: ~/.vim/autoload/class.vim
+
+function! class#class() abort
+    return s:class
+endfunction
+
+function! class#new() abort
+   let l:obj = copy(s:class)
+   return l:obj
+endfunction
+
+function! class#isobject(that) abort
+    return a:that.name ==# s:class.name
+endfunction
+```
+
+先看 `class#class()` 这个略有奇怪的函数命名。`class#` 前缀部分是对应
+`class.vim` 文件名路径的，`class()` 可认为是该函数的基础名字。它的作用很简单（
+也很关键），就是返回当前文件定义的类 `s:class`，使外界有个途径能使用这个类。这
+就是个取值函数，也可命名为 `getclass()` 或许可更易理解。
+
+`class#new()` 函数就是用于创建一个新对象。我们使用一个类时，第一步往往就是新建
+对象，这就只要调用 `class#new()` 就可以了。如果之前尚未加载类 `class` 的定义，
+就会按自动加载机制加载 `class.vim`，也就完成其内 `s:class` 的定义。普通用户一
+般情况下根本用不到 `class#class()` 获取 `s:class` 的定义，除非想动态修改类定义
+（慎重）。如果真的想向用户完全隐藏类定义，不提供 `class#class()` 函数即可，只
+提供 `class#new()` 让用户能创建对象好了。
+
+所以才将创建对象的函数定义为 `class#new()` 而非像上节那样的方法 `s:class.new()`，
+让用户直接上手创建对象，而不必关心类定义是否已加载。其次也是由于 VimL 只能按复
+制式创建对象，如果把 `s:class.new()` 方法也复制到对象中，是很没必要的，甚至还
+可能被误用。
+
+至于 `class#isobject()` ，用于判断一个对象是否属于本文件所定义的类。在某些应用
+中，先作类型判断是有意义的甚至是必要的。这里暂且先用类的 `name` 属性来标记一个
+类，因此为了保证类名的唯一性，`name` 属性的取值也按自动加载函数的规则取文件名
+路径（即如 `class#class()` 函数的前缀部分）。如果在某个深层子目录中定义的类，
+如 `autoload/topic/subject.vim` 文件内定义的 `s:class` 类名属性就应该是
+`topic#subject`。当然了，另有一个建议，由于 VimL 的大多数脚本都未必是类定义文
+件，为了更明确表示它是个类文件，可将更多实用的类都统一放在 `class/` 子目录下，
+如 `autoload/class/topic/subject.vim`，如果其类名就是 `class#topic#subject`。
+严格地讲，`class#isobject()` 要稳健地执行，还应判断所传入的参数 `a:that` 是否
+字典类型，以及是否有 `name` 这个属性。
+
+然后，可以根据需要设计更多的函数。这有两种选择，如果是操作对象的方法，应存入
+`s:class` 字典，如 `s:class.method()`。如果它不适合用作对象的方法属性，而着重
+与类型有关，可定义为自动加载函数，如 `class#func()`。
+
+### 区分类属性与对象属性
+
+从前面的章节讨论中，我们意识到类属性与对象属性可以是两个不同的概念，这是值得优
+化的一个方向。尤其是 VimL 中若用简单粗暴的全复制方式创建对象，把那些通用的属性
+复制到每个对象中，显然是个浪费。例如上一小节的类名属性 `name`，尤其是深层目录
+的类文件，像 `class#topic#subject` 这样的字符串已经不短了，每创建一个新对象都
+保存这样一个属性值，似乎很不值了。
+
+但另一方面，在类定义字典中保存类名属性也是有意义的，因其关联了文件路径，也可据
+此间接调用方式文件内的自动加载函数。所以，最好是能限定类名属性不被复制到新建对
+象中。因此为了区分，约定将类属性的命名加两个下划线，如 `_name_`。这样，某些具
+体的对象也可能需要自己的 `name` 属性，也不致键名冲突。
+
+按这种思路，我们再试写另一个类文件：
+
+```vim
+" File: ~/.vim/autoload/class/subclass.vim
+
+let s:class = {}
+let s:class._name_ = 'class#subclass'
+let s:class._version_ = 1
+
+" Todo: 其他对象属性预设
+let s:class.value = 0
+
+function! class#subclass#class() abort
+    return s:class
+endfunction
+
+function! class#subclass#new() abort
+   let l:obj = Copy(s:class) " Todo: 另外定制的特殊“复制”函数
+   return l:obj
+endfunction
+```
+
+之前定义在 `autoload/class.vim` 文件中名为 `class` 的类，不妨当作整个自定义
+VimL 类系统的通用基类。在实际工作中一般不会直接用到 `class` 类及其实例对象。所
+以我们开始设计实际可用的子类，建议将所有实用类归于 `class/` 子目录下。以上也仅
+是个说明示例，故类名简单取为 `subclass`，按自动加载机制，其全名则是
+`class#subclass` 。
+
+这个类文件的基本框架与之前类似，只不过将原来的类属性改名为 `_name_` 与
+`_version_` 。属于该类的对象的属性名，不加下划线，比如 `value`。然后创建对象的
+`#new()` 函数，显然不能直接用 `copy()` 或 `deepcopy()` 内置函数了。这个辅助的
+特殊复制函数需要另外实现，不过将其命名为 `Copy()` 或 `SpecialCopy()` 就显得有
+点蠢了。联想到之前的 `class#new()` 函数，既然一般没必要创建 `class` 顶层基类的
+实例对象，不妨将 `class.vim` 内定义的函数改为公共基础设施函数。于是修改如下：
+
+```vim
+" File: ~/.vim/autoload/class/subclass.vim
+
+function! class#subclass#new(...) abort
+   let l:obj = class#new(s:class, a:000)
+   return l:obj
+endfunction
+```
+
+这里，只是将当前文件定义的类 `s:class` 与任意参数 `a:000` 传给 `class#new()`
+基础设施函数，然后也是返回所创建的对象。至于 `class#new()` 的具体实现，略复杂
+，请参考 vimloo 项目的 `autoload/class.vim`。这里只说明它主要做的几件事：
+
+一是分析 `s:class` 的键，过滤掉带下划线前后缀的属性名，只把普通属性复制到对象
+实例中。如上例的 `class#subclass` 类，由 `#new()` 创建出的对象只有 `value` 属性。
+
+二是给每个新建对象添加唯一一个特殊属性，名为 `_class_` ，就是对 `s:class` 的引
+用。这样每个对象都能知道自己所属的类了，在有必要时可访问这个类字典获得其他信息
+。而且保存类字典的引用，比保存类名字符串在安全性与效率性上都好得多。然后，判断
+一个对象是否属于本类的函数也能利用该属性，可大约修改如下：
+
+```vim
+" File: ~/.vim/autoload/class/subclass.vim
+
+function! class#subclass#isobject(that) abort
+    " is 是操作符，相当于 == 用于比较相同的引用
+    return type(a:that) = type({}) && get(a:that, '_class_', {}) is s:class
+endfunction
+```
+
+其实还有第三个隐藏事件，这只在每个类创建第一个对象时发生。为了避免每次创建对象
+都要作第一步的分析过滤 `s:class` 的键名，`class#new()` 会在第一次记忆这个结果
+，保存在一个特殊键 `s:class._object_` 中。这是向用户隐藏的第一个实例，用户新建
+使用到的实例是直接从这个实例深拷贝的（`deepcopy()`）。我们可以将其视为这个类的
+“长子”，是其他实际干活的小弟们的楷模。
+
+### 控制继承与多层继承
+
+然后讨论 vimloo 项目对继承的实现。首先不要惊讶于命名学上的选用。因为前文已经说
+明，继承与实例化一样底层都是通过复制实现的。既然创建新对象是用 `#new()` 函数，
+那么创建新子类就用个相对的单词 `#old()` 。
+
+假设要从 `subclass` 继承一个类 `subsubclass`，类文件保存于 `class/subsubclass.vim`。
+当然你也可保存于 `class/subclasss/subsubclass.vim` 文件中，只是名字略长。这里
+要指出的是，文件系统的目录层次，未必要强求与类的继承链一一对应，那也会有其他麻
+烦，仅从文件管理角度看，将相关主题的类文件放在一个目录中就能接受了。
+
+要实现这个继承关系，有两点需要改动。一是在 `subsubclass.vim` 中创建 `s:class`
+时不再初始化为空字典，而是调用 `subclass#old()` 返回的字典；二就是要在
+`subclass.vim` 中实现 `subclass#old()` 函数，描述如何将自己这个类继承（复制）
+给子类。代码框架如下：
+
+```vim
+" File: ~/.vim/autoload/class/subsubclass.vim
+
+let s:class = subclass#old()
+let s:class._name_ = 'class#subsubclass'
+let s:class._version_ = 1
+
+" Todo: 其他类属性与方法
+function! class#subsubclass#new(...) abort
+   let l:obj = class#new(s:class, a:000)
+   return l:obj
+endfunction
+```
+
+```vim
+" File: ~/.vim/autoload/class/subclass.vim
+
+" 其他沿用，添加 #old() 方法
+function! class#subclass#old(...) abort
+   let l:class = class#old(s:class)
+   return l:class
+endfunction
+```
+
+可见 `subsubclass.vim` 的类定义框架与之前的 `subclass.vim` 很是类似，只有第一
+行初始化 `s:class` 的不同。甚至创建对象的 `#new()` 方法的写法也完全一样，因为
+把复制的细节都提炼到 `class#new()` 这个通用设施上了。用户可直接上手调用
+`class#subsubclass#new()` 方法创建对象，按 VimL 自动加载机制，`subsubclass.vim`、
+`subclass.vim` 与 `class.vim` 这三个脚本文件都会触发加载。
+
+至于继承函数 `class#subclass#old()` 与实例化函数 `class#subclass#old()` 也类似
+，将复制的细节委托通用的 `class#old()` 函数处理。它也是分析过滤 `s:class` 的键
+，将必要的键复制给子类，并在子类字典中添加一个特殊键 `_mother_` 引用自身类字典
+。（具体实现代码就不帖了，看 vimloo 项目源码）
+
+如果要让 `subclass` 继承自 `class`，也可修改 `subclass.vim` 中对 `s:class` 的
+创建语句 `let s:class = class#old()`。因为 `class#new()` 与 `class#old()` 函数
+接收可变参数，一般将其第一个参数视为类定义字典，即其他类文件中的 `s:class`，当
+然也可以是类名字符串，根据类名可获取其 `s:class` 字典；如果没有参数时，就用
+`class.vim` 文件本身的 `s:class` 类字典。不过，由于在 `class.vim` 的 `s:class`
+在实践中实在乏善可陈，在第二版（`_version_ = 2`）时，无参调用 `class#old()` 会
+快速返回空字典 `{}` 。自定义的顶层类没有母类（基类），或 `_mother_` 属性为空。
+
+因此，vimloo 实现的类体系，可类比“母系社会”来理解。从一个母类中有两种繁衍，“女
+儿”是子类，主要用途就是继续繁衍；“儿子”是实例化对象，就是用来实际工作干活的。
+子类中通过 `_mother_` 属性记录母类的联系，实例中是 `_class_` 属性。由于实际工
+作中可能需要许多同质的实例对象，故而还设置了一个隐藏的 `_object_` 长子监管。这
+套机制用于描绘单继承应该足够清晰易懂。
+
+能用单继承解决的问题，尽量避免多重继承。不过 vimloo 也实现了多重继承的支持。每
+个类的 `_mother_` 属性虽然只记录了唯一的母类，但也允许有其他基类，有两种“其他
+基类”。一种叫 `_master_` （意为“师父”），只继承其方法，不继承其数据；另一种叫
+`_father_` （意为“父亲”），只继承其数据，不继承其方法。每个类的 `_master_` 与
+`_father_` 属性（如果有），都是数组，即可以是多个来自其他类文件定义的 `s:class`。
+只不过这些“其他基类”的属性，都不会直接导入当前文件的 `s:class` 中，只有当创建
+对象实例时（如 `s:class._object_` 长子），才会分析这些类的键名，将必要的键复制
+下来。
+
+也可以通过形象的比喻来理解这个模型。如一位母亲抚育孩子，额外聘请多位老师教孩子
+其他技艺，这是可理解的（相当于某些语言的接口方法），不过母亲本身未必要掌握这些
+技能，她的目的是孩子们能学会就可以了。当然了，另一方面，也允许多个“父亲”，这思
+想有点危险啊，最好避而不用吧。
+
+### 构造函数与析构函数
+
+重新审视一下创建对象的 `#new()` 方法，其流程应该要包含以下三步工作：
+
+1. 复制类字典
+2. 初始化对象属性
+3. 返回对象
+
+其中，第一步与第三步的工作，对于每个类而言，都几乎是一样的，所以在 vimloo 中将
+其提炼为 `class#new()` 函数，可为每个自定义类处理通用事务。但是第二步的初始化，
+显然是每个类有独立需求的。因此，建议每个类文件再写个 `#ctor()` 函数专司初始化
+，这就叫做构造函数。
+
+仍以上文的 `subclass` 为例，将其创建函数与构造函数并列展示如下：
+
+```vim
+" File: ~/.vim/autoload/class/subclass.vim
+
+function! class#subclass#new(...) abort
+   let l:obj = class#new(s:class, a:000)
+   return l:obj
+endfunction
+
+function! class#subclass#ctor(this, ...) abort
+    if a:0 > 0
+        let a:this.value = a:1
+    endif
+endfunction
+```
+
+理论上，`#ctor()` 函数内的初始化代码插入到 `#new()` 函数中也是可以的。不过为了
+保持 `#new()` 函数的简单统一，同时为了支持其他间接创建对象的需要，故将构造函数
+`#ctor()` 独立出来。需要注意的是，`#ctor()` 函数不是由当前类文件的 `#new()` 函
+数直接调用的，而是间接由通用的 `class#new()` 函数调用。不过可变参数 `...` 的意
+义在这两个函数之间保持一致，即 `#ctor()` 内的 `a:1` 与 `#new()` 内的 `a:1` 是
+相同意义的参数。在构造函数 `#ctor()` 中，对象已经被创建出来，第一个参数 `a:this`
+就代表这个刚创建的对象。构造函数一般不由用户直接调用，也不必返回值，只要在创建
+函数 `#new()` 中返回对象即可。
+
+一般情况下，在自定义类文件中，建议同时提供创建函数与构造函数，各司其职。但是构
+造函数不是必须的，尤其是对象属性很少，或能接受每个对象都采用相同的初始值。甚至
+创建函数也不是必须的，因为也能从通用的 `class#new()` 函数中创建指定类的对象。
+例如，以下两个语句是等效的：
+
+```vim
+: let obj = class#subclass#new(100)
+: let obj = class#new('class#subclass', [100])
+```
+
+显然，使用类文件自己特定版本的 `#new()` 函数创建对象更简洁，意义更明确。不过通
+用的 `class#new()` 函数也适用于在程序运行需要动态创建不同类别的对象的情况。如
+果传入的第一个参数是类名字符串，则相应的类文件中必须定义 `#class()` 函数（上例
+就是 `class#subclass#class()`） 才能获取其类定义 `s:class`。此外，要让
+`class#new()` 能正确调用构造函数，也依赖于类字典 `s:class` 保存了类名属性
+`_name_`。
+
+对于子类的构造函数，写起来略为复杂些。因为你肯定期望能复用基类（母类）的构造函
+数初始化继承自母类的那部分数据属性。`class.vim` 提供了一个 `class#Suctor()` 函
+数用于获取一个类的母类的构造函数（引用）。于是 `subsubclass` 的构造函数可写成
+如下形式：
+
+```vim
+" File: ~/.vim/autoload/class/subsubclass.vim
+function! class#subsubclass#ctor(this, ...) abort
+    let l:Suctor = class#Suctor(s:class)
+    call call(l:Suctor, extend([a:this], a:000))
+    " Todo: 子类的其他对象属性初始化
+endfunction
+```
+
+其中，`call()` 内置函数的用法不算简单，请参考文档 `:h call()`。如果你确知母类
+的构造函数没有做什么实质性的初始化工作（甚至未提供构造函数），也可以省去调用母
+类构造函数的步骤。如果硬编码调用母类的构造函数，如 `class#subclass#ctor()` ，
+也不是不可以，但显然太过僵硬了，且写法上也未必比利用 `class#Suctor()` 省多少。
+在上例中，直接将所有的参数 `a:000` 传给母类的构造函数处理。在实践中，可能只需
+要部分参数传给母类，如果这部分参数正好是可变参数的前面几个，那么直接传 `a:000`
+也可能是正常的。在其他其他情况下，可能要对参数作某些预处理再传给母类的构造函数
+。
+
+在那些没有自动回收垃圾机制的面向对象语言（如 C++）中，与构造函数相应地，还有析
+构函数。VimL 脚本语言显然是能自动回收垃圾的，不须由程序员作此负担。不过 VimL
+在处理有环引用（如双向链表、树、图等复杂结构）中，垃圾回收会有滞后。为此，也可
+以在自定义类文件中写个“析构函数”，命名为 `#dector()`，用于打断对象内部的环引用。
+当确实用不到一个对象时（往往是在函数末尾），调用 `class#delete(object)`，它会
+自动调用相应类文件的 `#dector()` 方法，然后当这个对象离开作用域时，就能立即被
+回收了。vim 也有个内置的函数 `garbagecollect()` 可触发立即回收垃圾，但它可能要
+用到搜索判断环引用的复杂算法。如程序员能帮它的回收机制打断环引用，也应是善事，
+尽管这是可选的，不是必须的。
+
+### 类的外包与简化使用
+
+有了以上讨论的 vimloo 提供的面向对象功能，我们就能根据具体的功能需要，设计自定
+义的类（体系）了，然后创建对象完成实际的工作。
+
+不过还有个小问题，就是类名可能太长，书写不便。假如有这么个类，全名是
+`class#long#path#topic#subject`。用户在使用这个类时，每次创建对象都得调用
+`class#long#path#topic#subject#new()` 函数。这已经算麻烦的了，如果以后想重构，
+想对类重命名或移动存放目录路径，那每个创建对象的地方都还得作相应修改，那就不仅
+麻烦，也更易遗漏出错了。
+
+为此，vimloo 再提供一个 `class#use()` 函数。先直接看用法示例：
+
+```vim
+" File: ~/.vim/autoload/class/long/path/topic/subject.vim
+
+" 正常类定义，略
+
+function! class#long#path#topic#subject#use(...) abort
+    return class#use(s:class, a:000)
+endfunction
+```
+
+```vim
+" File: ~/.vim/vimllearn/useclass.vim
+
+let s:CPack = class#long#path#topic#subject#use()
+" 或
+" let s:CPack = class#use('class#long#path#topic#subject')
+
+function! s:foo() abort
+    let l:obj = s:CPack.new()
+    " Todo:
+endfunction
+
+function! s:bar() abort
+    let l:obj = s:CPack.new()
+    " Todo:
+endfunction
+```
+
+简言之，`class#use()` 创建会创建一个字典，默认情况下有以下几个键：
+
+* `class`：就是引用在类文件中定义的类字典 `s:class`
+* `new`  ：函数引用，相关类文件的创建函数 `#new()`
+* `isobject` ：函数引用，相关类文件的创建函数 `#isobject()`
+
+就是将某个类定义及两个最重要的自动加载函数（的引用）打包在另一个字典中，可以提
+供额外参数（函数名列表，不含 `#` 路径前缀）指定打包其他的自动加载函数，但 `class`
+是不需要指定，必然被打包在其内的。由于这仅是作了一层简单的包装，提供给外部使用
+，故简称为“外包”机制。注意类的方法（如 `s:class.method()`）是不需要外包的，因
+为那是通过之后创建的实例对象访问的。
+
+通过这种外包，用户代码就可大为简化了。例如可以在脚本开始将要用到的类的外包保存
+在一个脚本局部变量，如 `s:CPack`，然后在该脚本内就可以用 `s:CPack.new()` 创建该
+类的对象了。这是自动加载函数的引用，同样可以触发相关类文件的自动加载。如果此后
+类名发生了修改，或者就是想试用另一个类，也只要修改开始的一处代码而已。甚至在创
+建子类时，也可以利用外包书写，如：
+
+```vim
+let s:CPack = class#long#path#topic#subject#use()
+let s:class = class#old(s:CPack.class)
+" 等效于
+" let s:class = class#long#path#topic#subject#old()
+```
+
+另外要提示的是，`class#use()` 函数会记录已经被外包使用的类。所以在正常运行时，
+每个类只会创建一个外包，在多个脚本中使用同一个类的外包时，并不会增加额外的开销
+。
+
+### 类文件框架自动生成
+
+从以上内容可感知，创建一个自定义类文件，有着大致相似的框架，主要包含以下几部分
+内容：
+
+* 创建 `s:class` 字典，可以是简单的空字典或继承其他类；
+* 为 `s:class` 增加数据属性键，可用初始值约定数据类型；
+* 为 `s:class` 创建字典函数，用作类的方法；
+* 提供一些必要的自动加载函数。
+
+为了节省键盘录入字符的工作，vimloo 也提供了一些命令，用于根据模板文件生成类定
+义文件的基本框架。这可节省 VimL 类开发者的大量工作，通过命令生成基础代码（甚至
+可以再自定义映射，一键生成）后，只要再填充必要的类定义实现即可。
+
+* `:ClassNew {name}` 当前目录在某个 `autoload/` 或其子目录时可用，提供一个文件
+  名参数，将新建一个 `.vim` 文件，并根据该文件名创建一个类。
+* `:ClassAdd` 当正在编辑 `autoload/` 或其子目录下的某个 `.vim` 文件时，用该命
+  令向当前文件添加一个类定义。
+* `:ClassPart {option}` 与 `:ClassAdd` 类似，但只根据选项生成部分代码，而非全
+  部代码，用于补遗。
+
+类定义的框架模板文件位于 vimloo 项目的 `autoload/tempclass.vim`，这也是一个符合
+VimL 语法的脚本，同时也是个五脏俱全的类定义文件。该文件的每个段落开始有行注释
+，注释行末尾是类似 `-x` 的选项字符串，其中若小写字母表示默认生成这段代码，大写
+字母表示不生成这段代码。但以上命令可附加额外选项覆盖默认行为，多个选项字母拼在
+一起当作一个参数传入。
+
+若使用时还遇到疑问，请参考 vimloo 项目的说明文档或帮助文档。
