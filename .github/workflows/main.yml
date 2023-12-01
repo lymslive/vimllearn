@@ -1,10 +1,10 @@
 # On every push this script is executed
 on: push
-name: Build and deploy GH Pages
+name: Zola Build GH Pages
 jobs:
   build:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/zolabook'
+    if: github.ref == 'refs/heads/master'
     steps:
       - name: checkout
         uses: actions/checkout@v4
