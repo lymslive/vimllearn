@@ -1,0 +1,290 @@
++++
+title = "5.5 自动函数"
+weight = 5
++++
+
+<!-- ## 5.5 自动函数 -->
+
+自动加载函数（`:h autoload-functions`）自 Vim7 版本就支持了。不过它涉及的机制
+就不仅仅是函数本身了，所以放在本章之末再讨论。其实自动加载机制已经在第一章就作
+为 VimL 语言的一个特点介绍过了，请回头复习一下，在那里已经将自动函数的加载流程
+描叙的比较细致了。
+
+本节继续讲解有关自动函数的定义与使用。
+
+### 函数未定义事件
+
+自动加载函数的作用是，当安装的插件比较多时，不应该在启动 Vim 时全部加载（通过
+vimrc `:source` 调用或放在 `plugin/` 目录下），而应只在需要用到时才加载。当然
+，自定义命令与映射，相当于面向用户操作的 UI，那是应该在一开始就加载好（保证有
+定义）。但是复杂功能的命令与映射，往往是调用函数完成实际功能的，然后所调用的函
+数又可能只是个入口函数，其中又会涉及一堆相关功能的函数。那么这些函数的定义就可
+以延后加载，只在首次用到时触发加载，就能达到优化 Vim 启动速度的命令。
+
+在 Vim7 版本之前，用户可以利用 `FuncUndefined` 这个自动事件来实现延后加载脚本
+的目的。例如，假设在任一 `&rtp` 目录下的 `plug/` 中有如下脚本：
+
+```vim
+" >File: ~/.vim/plugin/delaytwice.vim
+
+if !exists('s:load_first')
+    command -nargs=* MYcmd  call DT_foo(<f-args>)
+    nnoremap <F12> :call DT_foo()<CR>
+    execute 'autocmd FuncUndefined DT_* source ' . expand('<sfile>')
+    let s:load_first = 1
+    finish
+endif
+
+if exists('s:load_second')
+    finish
+endif
+
+function! DT_foo() abort
+    " TODO:
+endfunction
+function! DT_bar() abort
+    " TODO:
+endfunction
+
+let s:load_second = 1
+```
+
+这个脚本将分两步加载。首先，由于它位于 `plugin/` 子目录，故在 Vim 启动时就会读
+取。在这第一次加载时，会进入 `if !exists('s:load_first')` 分支，该分支应该很短
+，只定义了命令与映射，并用一个 `s:` 变量标记已加载过一次后直接结束。关键是定义
+了自动事件 `FuncUndefined`，此后当调用了未定义函数且该函数名匹配 `DT_*` ，就会
+重新加载这个脚本。第二次加载时，会跳过 `if !exists('s:load_first')` 分支，继续
+加载后续代码，完成相应函数的定义。
+
+后面那个 `if exists('s:load_second')` 分支，是为了避免第三次或更多次的加载。对
+于其他普通脚本，也可用这个机制防止重复加载，不过仅为实现延时加载，这个分支是
+不必要的。一般地，如果脚本中主要是用 `:function!` 命令定义一些函数，重复加载也
+没有太大坏处，毕竟重复定义而覆盖的函数与原来的是一样。但是若脚本中需要维护某些
+`s:` 局部变量（尤其是较复杂的字典对象）的状态，重复加载脚本就会导致这些变量的
+重新初始化，可能就不是想要的，这就需要避免加载。这与延时加载是两个理念，延时加
+载是有意地设计为加载第二次。
+
+实际上，这延时加载的两部分，可以分别写在不同的两个脚本中。这对于非常大的脚本，
+可能还能进一步提高 Vim 启动速度。因为按上例，写在一个脚本中，虽然 vim 不必解释
+后半部分的代码，但毕竟首先还是要打开整个脚本文件的。因此，将第一部分定义的命令
+、映射与自动事件放在 `plugin/` 目录下，令其在 Vim 启动时就加载。第二部分的函数
+定义（主体内容，长）放在另一个目录下，只要不会被 vim 在启动阶段读取就可，例如
+不妨就放在 `autoload/` 子目录下。拆分结果示例如下：
+
+```vim
+" >File: ~/.vim/plugin/delaytwice.vim
+command -nargs=* MYcmd  call DT_foo(<f-args>)
+nnoremap <F12> :call DT_foo()<CR>
+execute 'autocmd FuncUndefined DT_* source ' . expand('~/.vim/autoload/delaytwice.vim')
+```
+
+```vim
+" >File: ~/.vim/autoload/delaytwice.vim
+function! DT_foo() abort
+    " TODO:
+endfunction
+function! DT_bar() abort
+    " TODO:
+endfunction
+```
+
+不过在拆分时，有一行代码要注意作相应修改。就是在定义 `FuncUndefined` 事件时，
+需要加载正确的（另一个）文件路径。上例是硬编码写入了对应的全路径。而在前面的单
+文件的版本中，可用 `<sfile>` 表示本脚本文件名。当然，在后面这个拆分版本中，若
+按某种规范存在相对路径中，也是可以避名硬编码的，如用以下语句代替：
+```vim
+expand('<sfile>:p:h') . '/../autoload/' . expand('<sfile>:p:t')
+```
+
+此外还须说明的是，用这种（手动）延时加载方案时，所定义的函数名最好用统一的前缀
+（或后缀），方便在定义 `FuncUndefined` 事件时指定相应的模式匹配，尽量使该匹配
+不扩大影响，也能保证所用函数能正确延时加载到。
+
+自 Vim7 版本后，有了自动延时加载机制，就不必用户自己实现手动延时加载方案了。不
+过以上的手动延时方案，有助于理解 Vim 的自动加载机制。另外单文件版本的示例可能
+仍有意义，不那么复杂的脚本若不想拆分多个文件，就可按此例用 `FuncUndefined` 事
+件实现。
+
+### 自动加载函数的定义
+
+自动加载机制，与上节讨论的拆分版的延时加载方案示例类似，不过有以下几点不同：
+
+* 不必再写 `FuncUndefined` 事件；
+* 将函数名前缀的 `DT_` 改为 `DT#`
+* 将定义函数的那个脚本文件名也改为 `autoload/DT.vim`
+
+```vim
+" >File: ~/.vim/plugin/delaytwice.vim
+command -nargs=* MYcmd  call DT#foo(<f-args>)
+nnoremap <F12> :call DT#foo()<CR>
+```
+
+```vim
+" >File: ~/.vim/autoload/DT.vim
+function! DT#foo() abort
+    " TODO:
+endfunction
+function! DT#bar() abort
+    " TODO:
+endfunction
+```
+
+这样就可以了，不必再关注 `DT#foo()` 函数有没有定义，什么时刻定义，在任何地方直
+接使用就可以了。vim 能自动识别函数名中间包含 `#` 符号的函数，当作自动加载函数
+处理，将 `#` 符号之前的部分视为脚本文件名，在函数未定义时，自动到 `&rtp` 的
+`autoload/` 子目录下查找。
+
+所以关键是要让函数名的 `#` 前缀与文件名保持一致，也可以不改 `delaytwice.vim`
+的文件名，而将函数名改为 `delaytwice#foo()`。这种函数名的首字符允许是小写，毕
+竟全局函数名首字母大写的规则，主要是为了避免与内置函数冲突。
+
+自动加载函数名中可以有多个 `#` 符号分隔，对应于 `autoload/` 子目录下各级路径：
+```vim
+{&rtp}/autoload/sub1/sub2/filename.vim
+function sub1#sub2#filename#func_name()
+```
+
+当 vim 加载含有 `#` 函数定义的脚本文件时，如果发现函数名前缀与文件路径不相符，
+就会报错，即无法顺利完成该函数的定义。不过事实上它只检查是否在 `autoload/` 目
+录下的相对路径，至于 `autoload/` 之上的父目录是否在 `&rtp` 中并不强制检测。因
+为在正式应用环境下，该脚本文件已经是从 `&rtp` 中搜索到的。而另一方面，在开发测
+试时，你只要建立相应的目录层次，把文件扔到（某个工程） `autoload/` 子目录下，
+即使暂没把工程目录加到 `&rtp` 下，在编辑这个脚本时，也可以用 `:source %` 加载
+当前文件进行测试，并不会因为它还不在 `&rtp` 中就失败。
+
+当有了 `#` 函数的自动加载机制，那是否可以与 `FuncUndefined` 事件联用协作呢？一
+般情况下没有必要。但假设一种情况，如果按目前流行的方式用插件管理插件从 github
+安装插件的话，一般是将每个插件放在独立的目录中，每个插件目录都加入了 `&rtp`中
+。这样如果你真的很狂热地安装了许多插件，你的 `&rtp` 路径列表将变得很长。`&rtp`
+路径在 vim 运行是至关重要，不仅这里介绍的自动加载函数，其他许多功能都要从
+`&rtp` 中查找。如果某个插件的主要功能只是提供了 `autoload/` 脚本，或许就可以尝
+试合并 `&rtp`，自己再写一个 `FuncUndefined` 事件，从其他地方加载脚本。
+
+那么就要注意 `#` 函数内置的自动加载时机，与 `FuncUndefined` 事件的触发，先后关
+系如何，避免一些可能的冲突。下面做一个试验来探讨之。
+
+首先，在 `~/.vim/autoload/delaytwice.vim` 脚本末尾加入如下一些输出语句，用以跟
+踪该脚本被加载的情况：
+
+```vim
+function! delaytwice#foo() abort
+    echo 'in delaytwice#foo()'
+endfunction
+
+" bar: 
+function! delaytwice#bar() abort
+    echo 'in delaytwice#bar()'
+endfunction
+echo 'autoload/delaytwice.vim loaded'
+```
+
+然后，再自定义一个 `FuncUndefined` 事件：
+```vim
+execute 'autocmd FuncUndefined *#*  call MyAutoFunc()'
+
+function! MyAutoFunc() abort
+    echo 'in MyAutoFunc()'
+    " TODO:
+endfunction
+```
+
+它也匹配任何中间含 `#` 符号的函数名，但假设它们（有些）没放在 `&rtp` 中，所以
+需要写个入口函数从其他地方查找并加载定义文件。将该代码放在 `plugin/` 下某个文
+件中，便于在每次启动 vim 时自动执行，保证该事件已定义。
+
+接下来就可以测试了，重启 vim （或打开 vim 的另一个实例会话），在命令行执行如下
+命令，其输出也附于其后：
+```
+: call delaytwice#foo()
+autoload/delaytwice.vim loaded
+in delaytwice#foo()
+```
+
+这说明只触发了 vim 内置的自动加载机制，它自动加载了 `delaytwice.vim` 文件，然
+后 `delaytwice#foo()` 函数就是已定义了，就可调用该函数了，不会再触发
+`FuncUndefined` 事件。
+
+再重启一个 vim ，在命令行调用一个在该文件中并不存在的函数，比如将 `foo()` 小写
+误写成了大写 `Foo()`，其输出如下：
+```
+: call delaytwice#Foo()
+autoload/delaytwice.vim loaded
+in MyAutoFunc()
+autoload/delaytwice.vim loaded
+E117: Unknown function: delaytwice#Foo
+```
+
+从结果可分析出，vim 仍是先按自动加载机制，找到 `delaytwice.vim` 并加载，然后再
+尝试调用 `delaytwice#Foo()`，它仍是个未定义函数。这二次调用时，才触发
+`FuncUndefined` 事件。当然我们这里自定义的 `MyAutoFunc()` 并没做实际工作，并不
+能解决函数未定义问题。于是 vim 再按自动加载机制，找到并加载 `delaytwice.vim`。
+加载两次后仍未解决问题，vim 就报错了。
+
+当然了，如果在 `&rtp` 中并没有找到 `delaytwice.vim` 或者调用 `:call
+nofile#foo()` ，它只出输出 `in MyAutoFunc()` 这行以及错误行。但它显然是遍历过
+一次 `&rtp` 未找到相应文件，才触发 `FuncUndefined` 事件的。
+
+现在，又假设不自定义 `FuncUndefined` 事件与 `MyAutoFunc()` 处理函数，只按 vim
+的自动加载机制，如果调用了在自动加载文件中其实并未定义的函数，会是什么情况呢：
+
+```
+: call delaytwice#Foo()
+autoload/delaytwice.vim loaded
+autoload/delaytwice.vim loaded
+E117: Unknown function: delaytwice#Foo
+
+: call delaytwice#bar()
+in delaytwice#bar()
+
+: call delaytwice#Bar()
+autoload/delaytwice.vim loaded
+E117: Unknown function: delaytwice#Bar
+```
+
+可见，第一次调用 `delaytwice#Foo()` 时，加载了两次脚本，其内的
+`delaytwice#foo()` 与 `delaytwice#bar()` 就是已定义的，可正常使用了。然后每次
+误用 `delaytwice#Foo()` 或 `delaytwice#Bar()` 都会再触发加载一次脚本。
+
+综上，可得到如下结论：
+
+* vim 会记录已加载的脚本文件，当调用自动加载函数时，若分析自动加载函数所对应的
+  自动加载脚本并未加载，就会先搜索并加载相应的脚本，再次调用原函数。
+* 在自动加载脚本已加载或未找到相应脚本的情况下，调用未定义的自动加载函数才会触
+  发 `FuncUndefined` 事件，会先调用自定义的事件处理函数，若无法触发，再次搜索
+  加载相应的脚本。
+
+### 自动函数与其他函数的比较
+
+首先，要明确一件事，自动加载函数是在全局作用域的。也就是相当于全局函数，可以在
+任何地方使用。
+
+但是，它又有某些局部函数的作用。比如，可以在两个自动加载脚本中定义“相同”的函数
+，`onefile#foo()` 与 `another#foo()`。但实际上它们仍是两个不同的函数，因为包含
+`#` 在内的整个字符串 `onefile#foo` 与 `another#foo` 才是它们的函数名。它们只是
+名字上包含相同后缀的相似函数而已。仅管如此，能在不同文件（插件）中，利用相同的
+词根定义相同（或相似）功能的不同实现，也是很有意义的，增加代码可读性与维护。
+
+在为自动函数定义函数引用时，也要使用其全名。同时，自动加载函数它是函数，不是变
+量。所以，在定义 `onefile#foo()` 的 `onefile.vim` 文件中，还可以定义 `s:foo`
+变量。但最好不要这样增加混乱，除非将其定义为同名函数的引用，如 `:let s:foo =
+function('onefile#foo')`。因为即使在同一个文件中，也必须使用包含 `#` 的函数全
+名，它可能很长，使用不太方便，所以定义一个局部于 `s:` 的函数引用，是有意义的。
+
+除了函数名可以加 `#` 符号实现自动加载机制，全局变量名也可以加 `#` 符号。但是只
+有当这个变量用于右值，如 `:let default = g:onefile#default` 才会触发搜索加载相
+应脚本（`onefile.vim`）。但用于左值，如 `:let g:onefile#default = 5` 却并不会
+触发加载脚本。这个区别其实是为了让用户在触发加载 `onefile.vim` 之前，就能设置
+`g:onefile#default` 的值，那可作为相关插件的用户配置变量，比之前惯用的
+`g:onefile_default` 变量名似乎更有意义，更像 VimL 风格。
+
+正因为 `#` 符号也可用于变量名，才千万注意不要将一个函数引用变量保存在 `#` 变量
+名中（包括 lambda 表达式），虽然那是合法的，但非常不建议如此混乱。只有真的有意
+设计开放给用户的重要配置才定义为 `#` 全局变量，并始终加上 `g:` 前缀。而函数名
+是不能加 `g:` 前缀的，如此容易直观地区分。
+
+总之，自动加载函数是 VimL 中一个极优秀的设计。如果说函数引用是注重从内部管理，
+那么自动加载函数则注重从外部管理。善加利用，可极大增强 VimL 代码的健壮性与可维
+护性。若说有什么缺点的话，那就是自动加载函数名可能太太太长了。并且要由用户来保
+证函数名前缀与文件名路径的一致性，如果脚本文件改名了，或移动了路径层次，手动修
+改函数名也是一大问题。非常期望在后续版本中能增加什么语法糖，能使得在本文件中定
+义与使用自动加载函数更加简洁些。
